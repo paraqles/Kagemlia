@@ -1,0 +1,98 @@
+require 'macaddr'
+
+require 'digest/sha2'
+
+require 'k_bucket'
+
+class Kademlia
+  include Singleton
+
+  attr_reader :id
+  attr_accessor :buckets
+
+  private
+  def initialize()
+    @id = Digest::SHA2.new << (Mac.addr.to_s + rand( 2**256 )).to_s
+    @recvQueue = Array.new
+    @buckets = Array.new
+  end
+
+  public
+  def self.i()
+    Kademlia.instance
+  end
+
+  def set_up( kBucketMax = 5 ) {
+    256.times do 
+      @buckets.push( KBucket.new( kBucketMax ) )
+    end
+    startRecv()
+  end
+
+  def registerForMsg( msgType, nonce, endpoint, port, callback )
+    @recvQueue.push( [ nonce => ['msgType' => msgType, 'endpoint' => endpoint, 'port' => port, 'callback' => callback ] ])
+  end
+
+  def startRecv()
+    @socket = UDPSocket::new
+    @socket.bind( '', '4223' )
+    @recvThread = Thread.new( @socket ) { | sock |
+      exit = false
+      while not exit
+        result = select( [ sock, STDIN ], nil, nil )
+
+        for r in result[0]
+          if r == sock
+            recv, from = sock.recvfrom( 2048 )
+            msg = MessageHandler::handle( recv )
+
+            if peerSeenAlready( msg.peerID )
+              peer = getPeer( msg.peerID )
+              peer.hasBeenSeen
+            else
+              putPeerInBucket( msg.peerID, from[2], from[1] )
+            end
+            if msg.respond?
+              peer.send( msg )
+            end
+          elsif r == STDIN
+            str = STDIN.read
+            if str == 'exit' or str == 'quit'
+              exit = true
+            else
+              processUserInput( str )
+            end
+          end
+        end
+      end
+    }
+  end
+
+  def peerAlreadySeen( peerID )
+    bucket = @buckets[ id.binDist( peerID ) ]
+    r = true if bucket.isPeerInKBucket?( peerID )
+    r ||= false
+    return r
+  end
+
+  def getPeer( peerID )
+    @buckets[ id.binDist( peerID ) ].getPeer( peerID )
+  end
+
+  def putPeerInBucket( peerID, endpoint, port )
+    peer = Peer.new( endpoint, port, peerID )
+    @buckets[ id.binDist( peerID ) ].addNode( peer )
+  end
+
+  def processUserInput( input )
+
+  end
+
+  def []( key )
+    
+  end
+
+  def []=( key, value )
+    
+  end
+end

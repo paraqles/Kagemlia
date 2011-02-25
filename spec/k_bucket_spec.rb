@@ -6,7 +6,7 @@ require 'peer'
 
 describe K_Bucket do
   before(:each) do
-    @k_bucket = K_Bucket.new
+    @k_bucket = K_Bucket.new( 5 )
   end
 
   context "(in general)" do
