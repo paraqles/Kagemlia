@@ -1,4 +1,4 @@
-require 'macaddr'
+require 'macdaddr'
 
 require 'digest/sha1'
 
@@ -29,10 +29,6 @@ class Kademlia
     startRecv( port )
   end
 
-  def registerForMsg( msgType, nonce, endpoint, port, callback )
-    @recvQueue.push( [ nonce => ['msgType' => msgType, 'endpoint' => endpoint, 'port' => port, 'callback' => callback ] ])
-  end
-
   def startRecv( port )
     @socket = UDPSocket::new
     @socket.bind( '', port )
@@ -44,7 +40,7 @@ class Kademlia
         for r in result[0]
           if r == sock
             recv, from = sock.recvfrom( 2048 )
-            msg = MessageHandler::handle( recv )
+            msg = MessageParser::parse( recv )
 
             if peerSeenAlready( msg.peerID )
               peer = getPeer( msg.peerID )
@@ -52,7 +48,7 @@ class Kademlia
             else
               putPeerInBucket( msg.peerID, from[2], from[1] )
             end
-            peer.send( msg ) if msg.respond?
+
           elsif r == STDIN
             str = STDIN.read
             if str == 'exit' or str == 'quit'
@@ -64,6 +60,10 @@ class Kademlia
         end
       end
     }
+  end
+
+  def registerForMsg( msgType, nonce, endpoint, port, callback )
+    @recvQueue.push( [ nonce => ['msgType' => msgType, 'endpoint' => endpoint, 'port' => port, 'callback' => callback ] ])
   end
 
   def peerAlreadySeen( peerID )
