@@ -1,31 +1,28 @@
 require 'json'
 
+require 'kademlia'
+
 class Message
-  attr_reader :msg_type, :nonce, :peer_id, :respond
-  attr_reader :msg_handler
+  attr_reader :nonce, :peer_id
   
-  def initialize()
-    @msg_type = 'Message'
-    @nonce = rand()
-    @peer_id
-    @respond = false
+  def initialize( msg = {} )
+    if msg == {}
+      @nonce = rand()
+      @peer_id = Kademlia.i.id
+    else
+      @nonce = msg['nonce']
+      @peer_id = msg['peer_id']
+    end
   end
   
-  def initialize( jsonMessage )
-    @peer_id = jsonMessage['peerID']
-  end
-  
-  def message()
-    [ "msgType" => "Message"]
+  def message( msg = {} )
+    msg['msgType'] = self.class.name
     finalize_message( msg )
   end
   
-  def finalize_message( msg )
-    msg.push( [ "nonce" => @nonce, 'msgType' => msgType ] )
-    msg
-  end
-  
-  def respond?
-    @respond
+  def finalize_message( msg = {} )
+    msg['nonce'] = @nonce
+    msg['peer_id'] = @peer_id
+    return msg
   end
 end

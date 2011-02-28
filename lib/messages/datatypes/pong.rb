@@ -1,17 +1,12 @@
-require 'Message'
+require 'messages/datatypes/message'
 
 class Ping < Message
-  def initialze()
-    super()
-    @msgType = 'Pong'
-  end
-  
-  def initialize( jsonMessage )
-    super(jsonMessage)
-    @msgType = 'Pong'
+  def initialze( msg = {} )
+    super( msg )
   end
   
   def message()
-    finalizeMessage( msg )
+    msg = {}
+    finalize_message( msg )
   end
 end

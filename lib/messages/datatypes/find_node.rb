@@ -1,38 +1,21 @@
-require 'Message'
+require 'messages/datatypes/message'
 
 class FindNode < Message
-  attr_reader :msgRespondType
-  attr_accessor :searchString
-  
-  def initialize( searchString )
-    super()
-    @msgType = 'FindNode'
-    @msgRespondType = 'ReturnNodes'
-    @searchString = searchString
-  end
-  
-  def initialize( jsonMessage )
-    super(jsonMessage)
-    @msgType = 'FindNode'
-    @msgRespondType = 'ReturnNodes'
-    @searchString = JSON.parse( jsonMessage['toFind'] )
-    @returnNodes = true
-    @nodes = []
-  end
-  
-  def addBucket( bucket )
-    bucket.each do | peer | 
-      @nodes.push(peer.id.to_s => peer.endpoint )
+  def initialize( msg = {} )
+    super( msg )
+    if msg == {}
+      @key = ''
+      @value = ''
+    else
+      @key = msg['key']
+      @value = msg['value']
     end
   end
   
-  def message()
-    if @returnNodes
-      msg = ['msgType' => @msgRespondType ]
-      msg.push( 'peers' => @nodes )
-    end
-    msg = ["msgType" => "FindNode", "toFind" => @serchString ] if not @returnNodes
-      
-    finalizeMessage( msg )
+  def message( key = "", value = "" )
+    @key ||= key
+    @value ||= value
+    msg = { "msgType" => "FindNode", "key" => @key, "value" => @value }
+    finalize_message( msg )
   end
 end

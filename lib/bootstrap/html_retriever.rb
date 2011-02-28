@@ -1,5 +1,6 @@
-require 'socket'
-require 'Retriever'
+require 'net/http'
+
+require 'bootstrap/retriever'
 
 class HTMLRetriever < Retriever
 
@@ -17,7 +18,10 @@ class HTMLRetriever < Retriever
   end
 
   def getPeers()
-    
+    Net::HTTP.start( @target, @port ) do | con |
+      resp = con.get( '/peer_list' )
+      resp.body
+    end
   end
 
 end

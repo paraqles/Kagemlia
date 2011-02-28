@@ -1,6 +1,7 @@
-require 'macdaddr'
-
+require 'rubygems'
+require 'macaddr'
 require 'digest/sha1'
+require 'singleton'
 
 require 'k_bucket'
 
@@ -22,8 +23,8 @@ class Kademlia
     Kademlia.instance
   end
 
-  def set_up( kBucketMax = 5, port = '4223' ) {
-    128.times do 
+  def set_up( kBucketMax = 5, port = '4223' )
+    128.times do
       @buckets.push( KBucket.new( kBucketMax ) )
     end
     startRecv( port )

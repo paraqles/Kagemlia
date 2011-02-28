@@ -1,21 +1,11 @@
-require 'Message'
+require 'messages/datatypes/message'
 
 class Ping < Message
-  attr_reader :msgResponseType
-  
-  def initialze()
-    super()
-    @peerID = ''
-    @respond = true
-    @msgResponseType = 'Pong'
-  end
-  
-  def initialize( jsonMessage )
-    super(jsonMessage)
-    @respond = true
+  def initialze( msg = {} )
+    super( msg )
   end
   
   def message()
-    finalizeMessage( msg )
+    finalize_message()
   end
 end
