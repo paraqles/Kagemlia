@@ -3,26 +3,41 @@ require 'json'
 require 'kademlia'
 
 class Message
-  attr_reader :nonce, :peer_id
-  
+  attr_reader :nonce, :node_id, :id
+
   def initialize( msg = {} )
-    if msg == {}
+    if not msg.include? 'nonce'
       @nonce = rand()
-      @peer_id = Kademlia.i.id
     else
       @nonce = msg['nonce']
-      @peer_id = msg['peer_id']
+    end
+
+    if not msg.include? 'node_id'
+      @node_id = Kademlia.i.id
+    else
+      @node_id = msg['node_id']
+    end
+
+    if not msg.include? 'id'
+      @id = Kademlia.i.new_id
+    else
+      @id = msg['id']
     end
   end
-  
+
   def message( msg = {} )
-    msg['msgType'] = self.class.name
     finalize_message( msg )
   end
-  
+
   def finalize_message( msg = {} )
+    msg['msgType'] = self.class.name
     msg['nonce'] = @nonce
-    msg['peer_id'] = @peer_id
+    msg['node_id'] = @node_id
+    msg['id'] = @id
     return msg
+  end
+
+  def to_s
+    "##{self.class.name}:(#{self.object_id}) -- { 'msgType' => '#{self.class.name}', 'nonce' => #{@nonce}, 'node_id' => '#{@node_id}', 'id' => '#{@id}' }"
   end
 end

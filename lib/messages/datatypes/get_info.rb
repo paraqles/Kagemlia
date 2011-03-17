@@ -1,22 +1,23 @@
 require 'messages/datatypes/message'
 
-class FoundValue < Message
+class GetData < Message
   def initialize( msg = {} )
     super( msg )
-    
+
     if msg == {}
       @key = ''
-      @value = ''
     else
       @key = msg['key']
-      @value = msg['value']
     end
   end
 
-  def message( key = '', value = '' )
+  def set( key )
+    @key = key
+  end
+
+  def message( key = '' )
     @key ||= key
-    @value ||= value
-    msg = { 'key' => @key, 'value' => @value }
+    msg = { 'key' => @key }
     finalize_message( msg )
   end
 end

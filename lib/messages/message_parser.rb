@@ -1,4 +1,7 @@
+require 'rubygems'
 require 'json'
+
+require 'singleton'
 
 class MessageParser
   include Singleton
@@ -11,6 +14,10 @@ class MessageParser
 
   public
 
+  def self.i()
+    self.instance
+  end
+
   def parse( string )
     begin
       msg  = JSON.parse( string )
@@ -18,15 +25,15 @@ class MessageParser
       return nil
     end
 
-    if not @msgTypes.include? js['msgType']
-      msgType = msg['msgType'].gsub!( /^[A-Z]/) { $&.downcase  }
+    if not @msgTypes.include? msg['msgType']
+      classname = msg['msgType']
+      msgType = msg['msgType'].gsub( /^[A-Z]/) { $&.downcase  }
       msgType.gsub!( /[A-Z]/ ) { | m | m = '_' + m.downcase }
 
-      if load( '../datatype/' + msgType + '.rb' )
-        @msgTypes.push( js['msgType'] )
+      if require( 'messages/datatypes/' + msgType + '.rb' )
+        @msgTypes.push( classname )
       end
     end
-
-    msg = (msg['msgType']).new
+    mesg = Kernel.const_get(classname).new( msg )
   end
 end

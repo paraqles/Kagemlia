@@ -1,8 +1,7 @@
 require 'messages/datatypes/ping'
 
 describe Ping do
-  before( :each )
-    $LOAD_PATH << '../lib' if not { $LOAD_PATH.each do { | p | true if p.match( /.*lib/ ) }
+  before( :each ) do
   end
 
   context "(in general)" do

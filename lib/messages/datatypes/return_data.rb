@@ -1,17 +1,19 @@
 require 'messages/datatypes/message'
 
-class FindNode < Message
+class ReturnData < Message
   def initialize( msg = {} )
     super( msg )
+
     if msg != {}
       @key = msg['key']
-      @value = msg['value']
+      @data = msg['data']
     end
   end
 
-  def message( key = "" )
+  def message( key, data )
     @key ||= key
-    msg = { "msgType" => "FindNode", "key" => @key }
+    @data ||= data
+
     finalize_message( msg )
   end
 end
