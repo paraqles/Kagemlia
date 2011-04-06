@@ -1,55 +1,98 @@
-require( "singleton" )
+require 'thread'
 
-require( "k_bucket" )
-require( "node" )
+require 'k_bucket'
+require 'node'
+
+require 'messages/datatypes/message'
 
 class BucketManager
-  include Singleton
+  def initialize( params )
+    @std = { :K => 10 }
 
-  def initialize()
+    @buckets_mutex = Mutex.new
     @buckets = Hash.new
+
+    @std.each do | k, v |
+      if not params.include? k
+        params[k] = v
+      end
+    end
+    params.each do | k, v |
+      if k == :id
+        @id = v
+      elsif k == :K
+        @K = v
+      end
+    end
+
+    @id.length.times do | i |
+      @buckets[i] = KBucket.new( @K )
+    end
   end
 
-  def self.i
-    self.instance
-  end
-
-  def []=( key, bucket )
-    @buckets[key] = ( bucket )
+ def []=( key, bucket )
+    bin_dist = (@id.bin_dist_to key) - 1
+    @buckets_mutex.synchronize {
+      @buckets[key] = bucket
+    }
   end
 
   def []( key )
-    @buckets[key] if @buckets.key? key
+    @buckets_mutex.synchronize {
+      @buckets[key] if @buckets.key? key
+    }
   end
 
   def get_nodes_for( id )
-    binDist = id.bin_dist_to( Kademlia.i.id )
+    bin_dist = (@id.bin_dist_to id ) - 1
     nodes = Array.new
-    @buckets[binDist].each do | node |
-      nodes.push( node ) if nodes.length < Kademlia.i.options['k']
-    end
+    dist = bin_dist
+    @buckets_mutex.synchronize {
+      while nodes.length < @K and dist > bin_dist / 2 and dist > 0
+        @buckets[bin].get_nodes( @K ).each do | node |
+          nodes.push node if nodes.length < @K
+        end
+        dist -= 1 if nodes.length < @K
+      end
+    }
   end
 
   def add_node( node )
     if node.kind_of? Node
-      binDist = node.id.bin_dist_to( Kademlia.i.id )
-      @buckets[binDist].add_node( node )
+      bin_dist = (@id.bin_dist_to node.id) - 1
+      @buckets_mutex.synchronize {
+        @buckets[bin_dist].add_node( node )
+      }
     end
   end
 
   def get_node( node )
     if node.kind_of? String
-      binDist = node.bin_dist_to Kademlia.i.id
-      node = @buckets[binDist].get_node( node )
+      bin_dist = (@id.bin_dist_to node) - 1
+      node_id = node
+    elsif node.kind_of? Message
+      bin_dist = (@id.bin_dist_to node.node_id ) - 1
+      node_id = node.node_id
     end
+    @buckets_mutex.synchronize {
+      node = @buckets[bin_dist].get_node( node_id )
+    }
   end
 
   def rem_node( node )
     if node.kind_of? String
-      binDist = node.bin_dist_to Kademlia.i.id
+      bin_dist = (@id.bin_dist_to node) - 1
     elsif node.kind_of? Node
-      binDist = node.id.bin_dist_to Kademlia.i.id
+      bin_dist = (@id.bin_dist_to node.id) - 1
     end
-    @buckets[binDist].rem_node( node )
+    @buckets_mutex.synchronize {
+      @buckets[bin_dist].rem_node( node )
+    }
+  end
+
+  def each( &blk )
+    @buckets_mutex.synchronize {
+      @buckets.each( blk )
+    }
   end
 end

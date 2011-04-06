@@ -1,16 +1,15 @@
 require 'messages/handler/message_handler'
-require 'messages/datatypes/return_nodes'
+require 'messages/datatypes/return_node'
 
 class FindNodeHandler < MessageHandler
-  def initialize( msg )
-    super( msg )
-    @target_id = msg.key
-    @in_msg = msg
+  def initialize( params )
+    super( params )
   end
 
-  def handle
-    msg = ReturnNodes.new
-    msg.set( 'nodes' => BucketManager.i.get_nodes( @in_msg.value ) )
-    @node.send( msg )
+  def handle( msg )
+    node = @bucket_manager.get_node( msg.node_id )
+    mesg = ReturnNode.new
+    mesg.set( 'nodes' => BucketManager.i.get_nodes( msg.value ) )
+    node.send( msg )
   end
 end

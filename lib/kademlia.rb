@@ -6,56 +6,70 @@ require 'digest/sha1'
 require 'singleton'
 require 'thread'
 
-require 'k_bucket'
 require 'bucket_manager'
-require 'messages/message_parser'
+require 'k_bucket'
 require 'node'
+require 'messages/json_message_parser'
+require 'modules/prefix_distance_extension'
 
 class Kademlia
-  include Singleton
+  attr_reader :id, :options, :socket, :socket_mutex
 
-  attr_reader :id, :options
-
-  private
-  def initialize()
+  def initialize( params = {} )
+    String.send( 'include', PrefixDistanceExtension )
     @hook_mutex = Mutex.new
+    @msg_queue_mutex = Mutex.new
+    @options_mutex = Mutex.new
+    @socket_mutex = Mutex.new
+    
     @id =  Digest::SHA1.hexdigest( Mac.addr.to_s + rand( 2**256 ).to_s )
+    
     @options = Hash.new
-    @buckets = BucketManager.i
+    @buckets = BucketManager.new( :id => @id )
     @hooks = Hash.new
+    
+    @socket = UDPSocket.new
     @options[:mac_addr] = Mac.addr.to_s
-
+    
     @setup_done = false
-    set()
-    BucketManager.i
-    @id.length.times do | i |
-      BucketManager.i[i] = KBucket.new( @options[:K] )
-    end
-  end
-
-  public
-  def self.i()
-    self.instance
+    #@start = false if params.include? :manuel_start
+    @start = true if not params.include? :manuel_start
+    set( params )
+    start_recv()
   end
 
   def set( options = {} )
     standards = { :K => 5,
                   :port => 4223,
-                  :send_format => Proc.new do | msg |
-                    msg.message.to_json
-                  end,
-                  :parser => Proc.new do | recv |
-                    MessageParser.i.parse( recv )
-                  end,
-                  :handler => Proc.new do | msg |
-                    MessageHandler.i.handle( msg )
-                  end,
-                  :bootstrap_retriever => Proc.new do
-                    require 'bootstrap/html_retriever'
-                    require 'bootstrap/list_parser/json_list_parser'
-
-                    JsonListParser.new( HTMLRetriever.new( "23.23.23.1" ) )
-                  end
+                  :send_format => {
+                    :priority => 1000,
+                    :callback => Proc.new do | msg |
+                        msg.message.to_json
+                      end,
+                    :one_time_hook => false
+                  },
+                  :parser => {
+                    :priority => 10,
+                    :callback => Proc.new do | recv |
+                        JsonMessageParser.parse( recv )
+                      end,
+                    :one_time_hook => false
+                  },
+                  :handler => {
+                    :callback => Proc.new do | msg |
+                        MessageHandler.i.handle( msg )
+                      end,
+                    :one_time_hook => false
+                  },
+                  :bootstrap_retriever => {
+                    :callback => Proc.new do
+                        require 'bootstrap/html_retriever'
+                        require 'bootstrap/list_parser/json_list_parser'
+                        retrv = HTMLRetriever.get_list_from( "23.23.23.1" )
+                        JsonListParser.parse( retrv, self, @buckets )
+                      end,
+                    :one_time_hook => false
+                  }
                 }
     if not @setup_done
       standards.each do | k, v |
@@ -66,81 +80,133 @@ class Kademlia
     end
     options.each do | k, v |
       case k
-        when :bootstrap_retriever then register( 'bootstrap.retriever', v )
-        when :K then @options[:K] = v
-        when :port then @options[:port] = v
-        when :send_format then register( "node.send", v )
-        when :parser then register( "message.recv", v )
-        when :handler then register( "message.handle", v )
+        when :K then
+          @options_mutex.synchronize{ @options[:K] = v }
+        when :port then
+          @options_mutex.synchronize{ 
+            @options[:port] = v
+          }
+        else
+          reqister(
       end
     end
     @setup_done = true
   end
 
-  def register( hook, callback, priority = 100 )
-    @hook_mutex.synchronize {
-      if @hooks[hook] == nil
-        @hooks[hook] = Array.new
-      end
-      is_in = false
-      @hooks[hook].each do | v |
-        if v[0] == priority and v[1].hash == callback.hash
-          is_in = true
-        end
-      end
-      @hooks[hook].push( [priority, callback] ) if not is_in
-      @hooks[hook].sort! { | a, b | a[0] <=> b[0] }
-    }
+  def register( hook_id, hook )
+    @hook_standard ||= {  :priority => 100,
+                          :one_time_hook => true }
+    @hook_standard.each do | k, v |
+      hook[k] = v if not hook.include? k
+    end
+    begin
+      @hook_mutex.lock
+    rescue ThreadError
+    end
+    if @hooks[hook_id] == nil
+      @hooks[hook_id] = Array.new
+    end
+    if not @hooks[hook_id].include? hook
+      @hooks[hook_id].push( hook )
+      @hooks[hook_id].sort! { | a, b | a[:priority] <=> b[:priority] }
+    end
+    @hook_mutex.unlock if @hook_mutex.locked?
   end
 
-  def unregister( hook, callback, priority = 100 )
-    @hook_mutex.synchronize {
-      if @hooks.include? hook
-        if @hooks[hook].include? [priority, callback]
-          @hooks[hook].delete [priority, callback]
-          if @hooks[hook].length == 0
-            @hooks.delete hook
-          end
+  def unregister( hook_id, hook )
+    @hook_standard.each do | k, v |
+      if not hook.include? k
+        hook[k] = v
+      end
+    end
+    begin
+      @hook_mutex.lock
+    rescue ThreadError
+    end
+    if @hooks.include? hook
+      if @hooks[hook_id].include? hook
+        @hooks[hook_id].delete hook
+        if @hooks[hook].length == 0
+          @hooks.delete hook
         end
       end
-    }
+    end
+    @hook_mutex.unlock if @hook_mutex.locked?
   end
 
   def hook( hook_id, msg  )
-    @hook_mutex.synchronize {
-      if @hooks.key? hook_id
-        @hooks[hook_id].each do | hook |
-          msg = hook[1].call( msg )
+    begin
+      @hook_mutex.lock
+    rescue ThreadError
+    end
+    if @hooks.key? hook_id
+      @hooks[hook_id].each do | hook |
+        msg = hook[:callback].call( msg )
+        if hook[:one_time_hook]
+          unregister( hook_id, hook )
         end
       end
-      return msg
-    }
+    end
+    return msg
+    @hook_mutex.unlock if @hook_mutex.locked?
   end
 
   def start_recv()
-    require 'messages/datatypes/acknowledge'
-    @socket = UDPSocket.new
-    @recv_thread ||= Thread.new {
-      @socket.bind( '127.0.0.1', @options[:port] )
-      while true
-        recv, from = @socket.recvfrom( 2048 )
-        msg = MessageParser.i.parse( recv )
-        node = BucketManager.i.get_node( msg.node_id )
-        node.has_been_seen if node != nil
-        if node == nil
-          node = Node.new( :endpoint => from[2],
-                           :port => from[1],
-                           :id => msg.node_id )
-          BucketManager.i.add_node( node )
-        end
-        msg = hook( "message", msg )
-        msg = hook( "message.type." + msg.class.name, msg )
-        msg = hook( "message." + msg.id, msg )
-        ack_msg = Acknowledge.new( 'id' => msg.id, 'nonce' => msg.nonce )
-        node.send( ack_msg )
+    if @start
+      require 'messages/datatypes/acknowledge'
+      begin
+        @socket_mutex.lock
+      rescue ThreadError
       end
-    }
-    @recv_thread.abort_on_exception = true
+        @socket.bind( '127.0.0.1', @options[:port] )
+      @socket_mutex.unlock if @socket_mutex.locked?
+      @recv_thread ||= Thread.new {
+        while true
+          recv = ""
+          from = nil
+          r = select( [@socket], nil, nil )
+          if r != nil
+            begin
+              @socket_mutex.lock
+            rescue ThreadError
+            end
+              recv, from = @socket.recvfrom( 2048 )
+            @socket_mutex.unlock if @socket_mutex.locked?
+            msg = hook( "message.recv", recv )
+            node = @buckets.get_node( msg.node_id )
+            node.has_been_seen if node != nil
+            if node == nil
+              node = Node.new(  :endpoint => from[2],
+                                :port => from[1],
+                                :id => msg.node_id,
+                                :kademlia => self,
+                                :socket => @socket )
+              @buckets.add_node( node )
+            end
+            msg = hook( "message", msg )
+            msg = hook( "message.type." + msg.class.name, msg )
+            msg = hook( "message." + msg.id, msg )
+            ack_msg = Acknowledge.new(  'node_id' => @id,
+                                        'id' => msg.id,
+                                        'nonce' => msg.nonce
+                                     )
+            begin
+              @socket_mutex.lock
+            rescue ThreadError
+            end
+              node.send( ack_msg )
+            @socket_mutex.unlock if @socket_mutex.locked?
+          end
+        end
+      }
+      @recv_thread.abort_on_exception = true
+    end
+  end
+
+  def stop_recv()
+    if @recv_thread != nil
+      @recv_thread.exit
+    end
   end
 
   def []( key )

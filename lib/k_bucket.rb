@@ -1,85 +1,119 @@
+require 'thread'
+
 require 'node'
 
 class KBucket
   def initialize( size = 10 )
-    @nodes = Hash.new
-    @timespan = Array.new
-    @wQueue = Hash.new
-    @wtimespan = Array.new
-    @max = size
+    @nodes_mutex      = Mutex.new
+    @nodes            = Hash.new
+    @timespan         = Array.new
+    @queue_mutex      = Mutex.new
+    @queue            = Hash.new
+    @queue_timespan   = Array.new
+    @max              = size
   end
 
   def get_nodes( k = 10 )
-    rNodes = []
+    ret_nodes = []
     if @nodes.length < k
       update
     end
-    %w(k @nodes.length).times do
-      rNodes.push( @nodes[ rand( (@nodes.length -1) ) ])
-    end
-    rNodes
+    @nodes_mutex.synchronize {
+      [k, @nodes.length].max.times do
+        ret_nodes.push( @nodes[ rand( (@nodes.length -1) ) ])
+      end
+    }
+    ret_nodes
   end
 
   def add_node( node )
-    if @nodes.length < @max
-      if not @nodes.include?( node )
-        @nodes[node.id] = node
-        @timespan.push node.id
+    node_added = false
+    @nodes_mutex.synchronize {
+      if @nodes.length < @max
+        if not @nodes.include?( node )
+          @nodes[node.id] = node
+          @timespan.push node.id
+        end
+        node_added = true
       end
-    elsif @wQueue.length < (2 ** @max)
-      if not @wQueue.include? node
-        @wQueue[node.id] = node
-        @wtimespan.push node
-      end
+    }
+    if not node_added
+      @queue_mutex.synchronize {
+        if @queue.length < (2 ** @max)
+          if not @queue.include? node
+            @queue[node.id] = node
+            @queue_timespan.push node.id
+          end
+        end
+      }
     end
   end
 
-  def rem_node( node, list = "" )
+  def rem_node( node )
     if node.kind_of? String
-      if @nodes.key? node or list == "bucket"
-        node = @nodes[node]
+      @nodes_mutex.synchronize {
+        node = @nodes[node] if @nodes.key? node
+        is_in_bucket = true
+      }
+      if not node.kind_of Node
+        @queue_mutex.synchronize {
+          node = @queue[node] if @queue.key? node
+          is_in_bucket = true
+        }
+      end
+    end
+    if node.kind_of Node
+      @nodes_mutex.synchronize {
         @nodes.delete node.id
         @timespan.delete node.id
-      elsif @wQueue.key? node or list == "queue"
-        node = @wQueue[node]
-        @wQueue.delete node.id
-        @wtimespan.delete node.id
-      end
-    else
-      if @nodes.include? node or list == "bucket"
-        @nodes.delete node.id
-        @timespan.delete node.id
-      elsif @wQueue.include? node or list == "queue"
-        @wQueue.delete node.id
-        @wtimespan.delete node.id
-      end
+      }
+      @queue_mutex.synchronize {
+        @queue.delete node.id
+        @queue_timespan.delete node.id
+      }
     end
     update
   end
 
   def update()
-    if @nodes.length < @max
-      (@max - @nodes.length).times do | i |
-        node_id = @wtimespan[i]
-        @nodes[node_id] = @wQueue[node_id]
-        @timespan.push node_id
-        rem_node( node_id, "queue" )
-      end
-    end
+    @nodes_mutex.synchronize {
+      @queue_mutex.synchronize {
+        if @nodes.length < @max and @queue.length > 0
+          (@max - @nodes.length).times do | i |
+              if i < @queue.length
+                node = @queue[@queue_timespan[i]]
+                @nodes[node.id] = node
+                @timespan.push node.id
+                @queue.delete node.id
+                @queue_timespan.delete node.id
+              else
+                break
+              end
+          end
+        end
+      }
+    }
   end
 
   def get_node( node_id )
-    node = @nodes[node_id]
-    node ||= @wQueue[node_id]
+    node = nil
+    @nodes_mutex.synchronize {
+      node = @nodes[node_id]
+      node ||= @queue[node_id]
+    }
     return node
   end
 
   def is_node_in_bucket?( node_id )
-    node_in?( @nodes, node_id )
+    @nodes_mutex.synchronize {
+      node_in?( @nodes, node_id )
+    }
   end
 
   def is_node_in_queue?( node_id )
-    nodeIn?( @wQueue, node_id )
+    @queue_mutex.synchronize {
+      node_in?( @queue, node_id )
+    }
   end
 
   def is_node_in_KBucket?( node_id )
@@ -90,25 +124,50 @@ class KBucket
 
   def []( index, queue = false )
     if index > 0
-      if queue and index < @wQueue.length
-        node_id = @wtimespan[index]
-        return @wQueue[node_id]
-      elsif index < @bucket.length
-        node_id = @timespan[index]
-        return @bucket[node_id]
-      end
+      @queue_mutex.synchronize {
+        if queue and index < @queue.length
+          return @queue[@queue_timespan[index]]
+        end
+      }
+      @nodes_mutex.synchronize {
+        if index < @bucket.length
+          return @bucket[@timespan[index]]
+        end
+      }
     end
     nil
   end
 
+  def each_in_nodes( &blk )
+    @nodes_mutex.synchronize {
+      @nodes.each( &blk )
+    }
+  end
+
+  def each_in_queue( &blk )
+    @queue_mutex.synchronize {
+      @queue.each( &blk )
+    }
+  end
+
   def each( &blk )
-    @wQueue.each( &blk ) if queue
-    @nodes.each( &blk ) if not queue
+    each_in_nodes( &blk )
+    each_in_queue( &blk )
   end
 
   def length( queue = false )
-    return @nodes.length if not queue
-    @wQueue.length if queue
+    len = 0
+    if not queue
+      @nodes_mutex.synchronize {
+        len = @nodes.length
+      }
+    end
+    if queue
+      @queue_mutex.synchronize {
+        len = @queue.length
+      }
+    end
+    len
   end
 
   private

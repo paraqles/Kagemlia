@@ -1,8 +1,8 @@
-require 'modules/binary_distance_extension'
+require 'modules/prefix_distance_extension'
 
-describe BinaryDistanceExtension do
+describe PrefixDistanceExtension do
   before( :all ) do
-    String.send( 'include', BinaryDistanceExtension )
+    String.send( 'include', PrefixDistanceExtension )
   end
 
   context "(in general)" do
@@ -15,8 +15,8 @@ describe BinaryDistanceExtension do
     it "should return length of string, if complete different" do
       ("abc".bin_dist_to "def").should == 3
     end
-    it "should return half length of string, if half equal" do
-      ("abcdef".bin_dist_to "abcghi").should == 3
+    it "should return position +1 from the end of the string, where the difference is" do
+      ("abcdef".bin_dist_to "abddef").should == 4
     end
     it "should return length of the smaller string" do
       ("abc".bin_dist_to "abcdef").should == 3

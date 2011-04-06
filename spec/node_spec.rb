@@ -6,23 +6,20 @@ require 'thread'
 
 require 'kademlia'
 require 'node'
+require 'messages/datatypes/ping'
+require 'messages/datatypes/pong'
 
 describe Node do
   context "(in general)" do
     before( :all ) do
-      Kademlia.i
-      Kademlia.i.start_recv
+      @kademlia = Kademlia.new( :port => 8998 )
     end
 
     before( :each ) do
-      @mutex = Mutex.new
-      @cv = ConditionVariable.new
-
-      Kademlia.i
-      Kademlia.i.start_recv
       @node = Node.new( :endpoint => '127.0.0.1',
                         :port => 3030,
-                        :id => 'balifapewoijf' )
+                        :id => 'balifapewoijf',
+                        :kademlia => @kademlia )
     end
 
     after( :each ) do
@@ -39,42 +36,35 @@ describe Node do
     end
 
     it "should contact node if id not given" do
+      sleep(2)
       @should_id = ""
       @server_thread = Thread.new {
         socket = UDPSocket::new
         socket.bind( '127.0.0.1', 3030 )
-
         puts "Test thread running"
-        while true
+        is_send = false
+        while not is_send
           puts "Waitin for incomming"
-          @cv.signal
           recv, from = socket.recvfrom( 2048 ) 
           msg = JSON.parse recv
-          puts msg["msgType"]
+          #puts "Get in spec: " + msg.to_s
           if msg["msgType"] == "Ping"
-              msg = Pong.new
-              puts msg
-              msg = msg.message
-              @should_id = Kademlia.i.new_id
-              msg["node_id"] = @should_id
-              puts "", "ID should #{@should_id}"
-              socket.send( msg.to_json, 0, from[1], 3030 )
-              @cv.signal
+              @should_id = @kademlia.new_id
+              resp = Pong.new( :node_id => @should_id,
+                              'id' => msg['id'] )
+              mesg = resp.message
+              socket.send( mesg.to_json, 0, from[2], from[1] )
+              is_send = true
+              #puts "Send in spec: " + resp.to_s
           end
         end
       }
-      node = nil
-      @mutex.synchronize {
-        @cv.wait( @mutex )
-        node = Node.new( :endpoint => '127.0.0.1', :port => 3030 )
-      }
-      @mutex.synchronize {
-        @cv.wait( @mutex )
-        sleep( 2 )
-        puts node.to_s
-        node.id.should == @should_id
-      }
-      @server_thread.exit
+      node = Node.new(  :endpoint => '127.0.0.1',
+                        :port => 3030,
+                        :kademlia => @kademlia )
+      @server_thread.join
+      sleep( 1 )
+      node.id.should == @should_id
     end
   end
 end

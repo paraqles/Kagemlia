@@ -1,43 +1,53 @@
+require 'rubygems'
 require 'json'
+
+require 'digest/sha1'
 
 require 'kademlia'
 
 class Message
   attr_reader :nonce, :node_id, :id
 
-  def initialize( msg = {} )
-    if not msg.include? 'nonce'
+  def initialize( params )
+    if not params.include? 'nonce'
       @nonce = rand()
-    else
-      @nonce = msg['nonce']
+    elsif
+      @nonce = params['nonce']
     end
 
-    if not msg.include? 'node_id'
-      @node_id = Kademlia.i.id
+    if not params.include? 'node_id' and not params.include? :node_id
+      raise ArgumentError, 'No local node_id provided'
     else
-      @node_id = msg['node_id']
+      @node_id = params['node_id'] if params.include? 'node_id'
+      @node_id = params[:node_id] if params.include? :node_id
     end
 
-    if not msg.include? 'id'
-      @id = Kademlia.i.new_id
+    if not params.include? 'id'
+      @id = Digest::SHA1.hexdigest( rand( 2 ** 128 ).to_s + Time.new.inspect.to_s )
     else
-      @id = msg['id']
+      @id = params['id']
     end
   end
 
-  def message( msg = {} )
-    finalize_message( msg )
+  def message( params = {} )
+    finalize_message( params )
   end
 
-  def finalize_message( msg = {} )
-    msg['msgType'] = self.class.name
-    msg['nonce'] = @nonce
-    msg['node_id'] = @node_id
-    msg['id'] = @id
-    return msg
+  def finalize_message( params = {} )
+    params['msgType'] = self.class.name
+    params['nonce'] = @nonce
+    params['node_id'] = @node_id
+    params['id'] = @id
+    return params
   end
 
   def to_s
     "##{self.class.name}:(#{self.object_id}) -- { 'msgType' => '#{self.class.name}', 'nonce' => #{@nonce}, 'node_id' => '#{@node_id}', 'id' => '#{@id}' }"
+  end
+
+  def clone()
+    msg = messsage
+    msg.delete 'nonce'
+    self.class.new( msg )
   end
 end

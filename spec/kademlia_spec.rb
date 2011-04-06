@@ -1,74 +1,126 @@
+require 'rubygems'
+require 'json'
+
+require 'thread'
+
 require 'kademlia'
 require 'messages/datatypes/ping'
-
-require 'modules/binary_distance_extension'
 
 describe Kademlia do
   context "(in general)" do
     before( :all ) do
-      String.send( 'include', BinaryDistanceExtension )
+      @kademlia = Kademlia.new
     end
 
-    before( :each ) do
-      Kademlia.i
+    after( :all ) do
+      @kademlia.stop_recv
+      @kademlia.socket.close
+      @kademlia = nil
+      GC.start
     end
 
     it "should not be nil" do
-      Kademlia.i.should_not == nil
+      @kademlia.should_not == nil
     end
 
     it "should have a id" do
-      Kademlia.i.id.should_not == nil.to_s
+      @kademlia.id.should_not == nil.to_s
     end
 
     it "should have options with k and local.port" do
-      Kademlia.i.options[:K].should == 5
-      Kademlia.i.options[:port] == 4223
+      @kademlia.options[:K].should == 5
+      @kademlia.options[:port].should == 4223
     end
 
     it "should be possible to set options" do
-      Kademlia.i.options[:K].should == 5
-      Kademlia.i.set( :K => 10, :port => 2323 )
-      Kademlia.i.options[:K].should == 10
-      Kademlia.i.options[:port].should == 2323
-      Kademlia.i.set( :port => 4223, :K => 5 )
+      @kademlia.options[:K].should == 5
+      @kademlia.set( :K => 10, :port => 2323 )
+      @kademlia.options[:K].should == 10
+      @kademlia.options[:port].should == 2323
+      @kademlia.set( :port => 4223, :K => 5 )
     end
 
     it "should execute hooks" do
-      Kademlia.i.register( 'test_hook', Proc.new do | msg |
+      @kademlia.register( 'test_hook', :callback => Proc.new do | msg |
         msg.upcase!
       end )
-
-      msg = Kademlia.i.hook( 'test_hook', "this is the msg" )
-      msg.should == "this is the msg".upcase!
+      test_msg = "this is the msg"
+      msg = @kademlia.hook( 'test_hook', test_msg )
+      msg.should == test_msg.upcase
     end
 
     it "should recieve a msg and execute the hooks for this msg" do
-      msg = Ping.new( 'node_id' => Kademlia.i.new_id )
+      msg = Ping.new( 'node_id' => @kademlia.new_id )
       hook_id = "message.#{msg.id}"
-      Kademlia.i.register( hook_id, Proc.new do | msg |
-        Kademlia.i.options['msg'] = "this is a test"
-        msg
-      end )
-      Kademlia.i.start_recv
-      socket = UDPSocket.new
-      socket.bind( "127.0.0.1", 3030 )
-      is_send = false
-      trys = 0
-      while not is_send
+      @kademlia.register( hook_id, :callback => Proc.new do | msg |
+          @kademlia.options['msg'] = "this is a test"
+          msg
+        end
+      )
+      server_thread = Thread.new {
+        socket = UDPSocket.new
+        socket.bind( "127.0.0.1", 3333 )
+        is_send = false
+        trys = 0
+        while not is_send
+          socket.send( msg.message.to_json, 0, '127.0.0.1', 4223 )
+          r = Kernel.select( [socket], nil, nil, 0.5 )
+          if r != nil
+            #puts "r => " + (r == nil ? 'nil' : r.to_s)
+            recv, from = socket.recvfrom( 2048 )
+            mesg = JSON.parse( recv )
+            if mesg['msgType'] == 'Acknowledge'
+              is_send = true
+            else
+              is_send = false
+            end
+          end
+          if trys > 5
+            is_send = true
+          end
+          trys += 1
+        end
+        socket.close
+      }
+      server_thread.join
+      @kademlia.options['msg'].should == "this is a test"
+    end
+    it "should recieve a ping message and should return a pong message" do
+      test_id = @kademlia.new_id
+      msg = Ping.new( :node_id => test_id )
+      
+      server_thread = Thread.new {
+        socket = UDPSocket.new
+        socket.bind( "127.0.0.1", 3333 )
+        is_send = false
+        trys = 0
+        mess_n = 0
         socket.send( msg.message.to_json, 0, '127.0.0.1', 4223 )
-        r = Kernel.select( [socket], nil, nil, 0.5 )
-        #puts "r => " + (r == nil ? 'nil' : r.to_s)
-        if r != nil
-          is_send = true
-          recv, from = socket.recvfrom( 2048 )
+        while not is_send
+          r = Kernel.select( [socket], nil, nil, 0.5 )
+          if r != nil
+            #puts "r => " + (r == nil ? 'nil' : r.to_s)
+            recv, from = socket.recvfrom( 2048 )
+            mesg = JSON.parse( recv )
+            puts "Trys:          \t" + trys.to_s
+            puts "Message:       \t" + mesg.to_s
+            puts "Message Number:\t" + mess_n.to_s
+            if mess_n == 0
+              mesg['msgType'].should == 'Acknowledge'
+              mess_n += 1
+            else
+              mesg['msgType'].should == 'Pong'
+              break
+            end
+          end
+          if trys > 1
+            break
+          else
+            trys += 1
+          end
         end
-        if trys > 5
-          is_send = true
-        end
-        trys += 1
-      end
-      Kademlia.i.options['msg'].should == "this is a test"
+      }
+      server_thread.join
     end
   end
 end

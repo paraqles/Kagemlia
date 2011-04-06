@@ -6,7 +6,7 @@ describe Ping do
 
   context "(in general)" do
     it "should have a ID that is the same as Kademelia.i.id" do
-      msg = Ping.new
+      msg = Ping.new( :node_id => "asdf" )
     end
   end
 end

@@ -1,6 +1,6 @@
 require 'messages/datatypes/message'
 
-class ReturnNodes < Message
+class ReturnNode < Message
   def initialize( msg = {} )
     super( msg )
     if msg != {}

@@ -1,12 +1,15 @@
 require 'handler'
 
+require 'messages/datatypes/ping'
+require 'messages/datatypes/pong'
+
 class PingHandler < Handler
-  def initialize( msg )
-    super( msg )
+  def initialize( params )
+    super( params )
   end
 
-  def handle
-    msg = Pong.new
-    @node.send( msg )
+  def handle( msg )
+    mesg = Pong.new( :id => msg.id, :node_id => @kademlia.id )
+    @node.send( mesg )
   end
 end

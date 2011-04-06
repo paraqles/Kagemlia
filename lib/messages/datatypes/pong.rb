@@ -1,6 +1,6 @@
 require 'messages/datatypes/message'
 
-class Ping < Message
+class Pong < Message
   def initialze( msg = {} )
     super( msg )
   end
