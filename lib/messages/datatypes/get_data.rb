@@ -1,18 +1,14 @@
 require 'messages/datatypes/message'
 
 class GetData < Message
+  attr_reader :key
+
   def initialize( msg = {} )
     super( msg )
 
-    if msg == {}
-      @key = ''
-    else
-      @key = msg['key']
-    end
-  end
-
-  def set( key )
-    @key = key
+    @key = msg['key'] if msg.include? 'key'
+    @key ||= msg[:key] if msg.include? :key
+    @key ||= ''
   end
 
   def message( key = '' )

@@ -1,21 +1,17 @@
 require 'messages/datatypes/message'
 
 class ReturnNode < Message
+  attr_reader :nodes
+
   def initialize( msg = {} )
     super( msg )
-    if msg != {}
-      msg['nodes'].each do | node |
-        @peers.push( node )
-      end
-    end
+    @nodes = msg['nodes'] if msg.include? 'nodes'
+    @nodes = msg[:nodes] if msg.include? :nodes
   end
 
-  def add_node( peer )
-    
-  end
-
-  def message( nodes )
-    msg = { 'nodes' => @peers }
+  def message( nodes = '' )
+    @nodes ||= nodes
+    msg = { 'nodes' => @nodes }
     finalize_message( msg )
   end
 end

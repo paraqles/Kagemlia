@@ -1,19 +1,20 @@
 require 'messages/datatypes/message'
 
 class Store < Message
+  attr_reader :key, :data
   def initialize( msg = {} )
     super( msg )
-    if msg == {}
-      @key = ''
-      @value = ''
-    else
-      @key = msg['key']
-      @key = msg['value']
-    end
+    @key = msg['key'] if msg.include? 'key'
+    @key = msg[:key] if msg.include? :key
+
+    @data = msg['data'] if msg.include? 'data'
+    @data = msg[:data] if msg.include? :data
   end
   
-  def message()
-    msg = { 'key' => @key, 'value' => @value }
+  def message( key = '', data = '' )
+    @key ||= key
+    @data ||= data
+    msg = { 'key' => @key, 'data' => @data }
     finalize_message( msg )
   end
 end
