@@ -2,18 +2,14 @@ require 'bucket_manager'
 require 'kademlia'
 require 'store_manager'
 
+require 'messages/handler/handler'
+
 require 'messages/datatypes/message'
 require 'messages/datatypes/acknowledge'
 
-class MessageHandler
+class MessageHandler < Handler
   def initialize( params )
-    params.each do | k, v |
-      case k
-        when :kademlia then @kademlia = kademelia
-        when :buckets then  @bucket_manager = bucket_manager
-        when :storage then  @store_manager = store_manager
-      end
-    end
+    super( params )
   end
 
   def handle( msg )
@@ -21,5 +17,6 @@ class MessageHandler
     mesg = Acknowledge.new( :node_id => @kademelia,
                             :id => msg.id )
     node.send( mesg )
+    return msg
   end
 end

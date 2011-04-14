@@ -5,7 +5,8 @@ class PongHandler < MessageHandler
     super( msg )
   end
 
-  def handle
-    @node.id = msg.node_id
+  def handle( msg )
+    @kademlia.hook( "message.id=" + msg.id.to_s, msg )
+    return msg
   end
 end
