@@ -46,19 +46,16 @@ class Node
                         )
       send( msg )
     end
-
     has_been_seen
   end
 
-  def send( msg )
-    msg = @kademlia.hook( "node.endpoint." + @endpoint + ".send", msg )
-    msg = @kademlia.hook( "node.send", msg )
-    begin
-      @kademlia.socket_mutex.lock
-    rescue ThreadError
+  def send( msg, resend = false)
+    if not resend
+      @kademlia.msg_add( msg )
+      msg = @kademlia.hook( "node.endpoint=" + @endpoint + ".send", msg )
+      msg = @kademlia.hook( :message_send, msg )
     end
-      @kademlia.socket.send( msg, 0, @endpoint, @port )
-    @kademlia.socket_mutex.unlock if @kademlia.socket_mutex.locked?
+    @kademlia.send( msg, 0, @endpoint, @port )
   end
 
   def has_been_seen()
